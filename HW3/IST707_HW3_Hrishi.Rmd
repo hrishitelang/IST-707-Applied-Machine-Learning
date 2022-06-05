@@ -1,0 +1,124 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#HW3: Association Rules Mining
+
+```{r}
+# Enter your name here: Hrishikesh Telang
+# SUID: 889489533
+```
+
+#1. I am loading the libraries
+```{r}
+library(arules) #Load the package 'arules'
+library(arulesViz) #Load the package 'arulesViz'
+library(readr) #Load the package 'readr'
+```
+
+#2. Next, I am loading the csv data file 
+```{r}
+bank <- read.csv('bankdata_csv_all.csv') 
+```
+
+#3. I am checkling the first five and the last five columns of the bank dataset
+```{r}
+head(bank)
+tail(bank)
+```
+
+#4. Next I am checking the structure of the dataset. I can see that all columns have character datatype, age, income and children are integers and they have quartiles, mean, median and mode.
+```{r}
+summary(bank) # What is the structure?
+```
+
+#5. I am now checking the structure of the bank dataset (to check the datatypes)
+```{r}
+str(bank) #returns the structure (datatypes) of the bank dataset
+```
+
+#5. With nrow and ncol functions, I know that my dataframe is 600x12
+```{r}
+nrow(bank) #returns number of rows
+ncol(bank) #returns number of columns
+```
+
+#6. I wanted to view the whole dataframe.
+```{r}
+View(bank)
+```
+
+#7. Now, I am focusing on converting all the variables to factor variables. (optional step)
+```{r}
+bank_new <- data.frame(sex=as.factor(bank$sex),
+                     region=as.factor(bank$region),
+                     married=as.factor(bank$married),
+                     children=as.factor(bank$children),
+                     car=as.factor(bank$car),
+                     save_act=as.factor(bank$save_act),
+                     current_act=as.factor(bank$current_act),
+                     mortgage=as.factor(bank$mortgage),
+                     pep=as.factor(bank$pep))
+```
+#8. I wanted to know how many customers bought the personal equity plan as agaisnt those who didn't
+```{r}
+table(bank_new$pep)
+```
+
+#9. I am checking the percentages of the yes variables from the no.
+```{r}
+prop.table(table(bank_new$pep))
+```
+
+#10. I am coercing the **bank_new** dataframe into a **sparse transactions matrix** called **bankX**.
+```{r}
+bankX <- as(bank_new, "transactions")
+bankX
+```
+
+#11. I check the item frequency of the bankX matrix
+```{r}
+itemFrequency(bankX) #Shows item frequency for each categorical value
+itemFrequencyPlot(bankX) #Plots the frequency distribution
+```
+#12. I am checking the bankX matrix
+```{r}
+inspect(bankX[1:10]) 
+```
+
+#13. I finally used **apriori** to generate a set of rules with support over 0.008 and confidence over 0.98, and trying to predict what external situations made customers sign up for a Persoal Equity Plan (PEP). I sortef the dataset in descending order of importance and only wanted to check the top 5 rules.
+```{r}
+rules <- apriori(bank_new, parameter = list(supp=0.008, conf= 0.98), 
+                  appearance=list(default="lhs", rhs="pep=YES"), 
+                  control=list(verbose=F))
+rules <- sort(rules, decreasing=TRUE,by='support')
+inspect(rules[1:7])
+```
+#Inferences: The chances of a customer buying a PEP overall is 45.6% high. The chances that customers who lived in towns and inner cities and who had no savings account had a higher probability of buying PEP, with support being nearly 0.0300. Besides, if the customer owns a current account, has a mortgage and lives in the suburban areas, the chances increase to a confidence to about 100%. It is surprising to note that even the probability that a customer is not married maintains a support of 83.3%
+
+#14. I used the same code to find out what conditions did not let customers buy PEP.
+```{r}
+rules2 <- apriori(bank_new, parameter = list(supp=0.008, conf= 0.98), 
+                  appearance=list(default="lhs", rhs="pep=NO"), 
+                  control=list(verbose=F))
+rules2 <- sort(rules2, decreasing=TRUE,by='support')
+inspect(rules2[1:5])
+```
+#Inferences: The chances of a customer not buying a PEP overall is 54.3% high. This percentage is found to be greater. The chances that customers who lived in inner cities and had 3 children with no savings account had a higher probability of not buying PEP, with support being nearly 0.0360. Whereas, some families which are married and have both savings and current accounts don't avail PEP. On the other hand, single customers who have both accounts and a mortagage do not avail PEP.
+
+#15. Get the top 10 rules sorted by lift
+```{r}
+subrules <- head(sort(rules, by="lift"), 10)
+subrules2 <- head(sort(rules2, by="lift"), 10)
+```
+
+#16. I am plotting 'subrules' and 'subrules2'
+```{r}
+plot(subrules, method="graph")
+```
+```{r}
+plot(subrules2, method="graph")
+```
+#Strategy:
+#The PEP should be pitched to individuals who have children and who also don't have savings accounts. The PEP scheme should be readily available in the rural towns.
