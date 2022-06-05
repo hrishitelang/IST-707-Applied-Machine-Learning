@@ -1,0 +1,12 @@
+#HW2
+
+```{r}
+library(readr)
+data <- read_csv('supermarket_sales.csv')
+data
+```
+
+```{r}
+str(data)
+```
+
