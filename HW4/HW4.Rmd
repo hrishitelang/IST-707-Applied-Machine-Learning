@@ -1,0 +1,168 @@
+# Cluster-Analysis-and-Decision-Tree-Induction
+Using Cluster Analysis and Decision Tree algorithm to solve a mystery in history: who wrote the disputed essays, Hamilton or Madison?
+
+## Loading the requied packages
+```{r,eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+library(factoextra)
+library(stringr)
+library(tidyr)
+library(gridExtra)
+library(rpart)
+library(caret)
+```
+
+
+## Loading the data
+```{r}
+data <- read.csv("HW4-data-fedPapers85.csv")
+str(data)
+```
+
+#Summary of the authors
+```{r}
+summary(data$author)
+```
+
+## Data Manipulation
+#### Creating a new column with a short form of the author name:
+```{r}
+data$owner <- ifelse(data$author == 'HM', 'HM', ifelse(data$author == 'Jay', "J", ifelse(data$author == 'Madison', 'M', ifelse(data$author == 'dispt', 'D', ifelse(data$author == 'Hamilton', 'H', NA)))))
+data$owner
+```
+
+#### Splitting the file name & number:
+```{r}
+data<-extract(data, filename, into = c("Name", "Num"), "([^(]+)\\s*[^0-9]+([0-9].).")
+```
+
+#### Creating a new column combining the author name along with the file number:
+```{r}
+data$file<-paste(data$owner,"-",data$Num)
+```
+
+#### Column to Index:
+```{r}
+rownames(data)<-data$file
+data
+```
+
+#### Dropping the unwanted columns:
+```{r}
+data<-data[c(-(ncol(data)-1))]
+data<-data[c(-(ncol(data)))]
+data<-data[c(-2,-3)]
+data
+```
+
+#### Moving aside the files authored by Jay and Hamilton+Madison:
+
+As we are only conserned about the authorship of the disputed articles and only among Hamilton and Madison. SO, we can go ahead and remove 'Jay' and 'HM'
+
+```{r}
+d <- data[data$author!="Jay",]
+data <- d[d$author!="HM",]
+```
+
+#### Dropping unused levels:
+```{r}
+data<-droplevels(data)
+
+```
+
+#### Sample data post manipulation:
+As we have made few changes to the data, let us have a look at it. 
+```{r}
+head(data, 5)
+```
+
+#### Euclidean distance calculation & visualization:
+The Eucldena distance is calculated to measure the distance between the vectors and in here we use it to measure the similarity between the files. As we can see from the below plot that the files intersecting at the blue point are very similar and the ones at the red are not. 
+```{r, warning=FALSE}
+distance<-get_dist(data)
+fviz_dist(distance, gradient = list(low = "#00AFBB", mid = "white", high = "#FC4E07"))
+```
+
+## K-means - Default  
+Clustering is an unsupervised learning technique. It is the task of grouping together a set of objects in a way that objects in the same cluster are more similar to each other than to objects in other clusters. Similarity is an amount that reflects the strength of relationship between two data objects. Clustering is mainly used for exploratory data mining. It is used in many fields such as machine learning, pattern recognition, image analysis, information retrieval, bio-informatics, data compression, and computer graphics.
+```{r}
+set.seed(42)
+def <- kmeans(data[c(-1)], centers = 5)
+t(table(data[,1],def$cluster))
+```
+From the above result we can see that the disputed articles have been well spread across the authors. The reson being, usage of many clusters. SO we have to find the optimal number of clusters to to gain the accurate answer. Let us have a look at the clusters that we have so far.  
+
+#### Plotting the CLusters
+```{r}
+fviz_cluster(def, data = data[c(-1)])
+```
+
+#### Finding optimal nnumber of clusters
+```{r}
+set.seed(123)
+wss <- function(k){
+  return(kmeans(data[c(-1)], k, nstart = 25)$tot.withinss)
+}
+
+k_values <- 1:10
+
+wss_values <- purrr::map_dbl(k_values, wss)
+
+plot(x = k_values, y = wss_values, 
+     type = "b", frame = F,
+     xlab = "Number of clusters K",
+     ylab = "Total within-clusters sum of square")
+```
+
+From the above graph, it is safe to say that 4 is the optimal number of clusters for this dataset.
+
+```{r}
+set.seed(48)
+def <- kmeans(data[c(-1)], centers = 4, nstart = 15, iter.max = 100)
+t <- t(table(data[,1],def$cluster))
+t
+```
+
+As we can see from the above result that the disputed articles were authored by Madison.
+
+#### Plotting the Clusters
+```{r}
+fviz_cluster(def, data = data[c(-1)])
+```
+
+#### Cluster Growth:
+Let us have a another look at the way the cluster formation varies with gradual increase in number of clusters.
+```{r}
+k2 <- kmeans(data[c(-1)], centers = 2, nstart = 25)
+k3 <- kmeans(data[c(-1)], centers = 3, nstart = 25)
+k4 <- kmeans(data[c(-1)], centers = 4, nstart = 25)
+k5 <- kmeans(data[c(-1)], centers = 5, nstart = 25)
+k6 <- kmeans(data[c(-1)], centers = 6, nstart = 25)
+k7 <- kmeans(data[c(-1)], centers = 7, nstart = 25)
+```
+
+#### Plotting the clusters
+```{r, fig.width=10, fig.height=8}
+p2 <- fviz_cluster(k2, geom = "point", data = data[c(-1)]) + ggtitle("k = 2")
+p3 <- fviz_cluster(k3, geom = "point",  data = data[c(-1)]) + ggtitle("k = 3")
+p4 <- fviz_cluster(k4, geom = "point",  data = data[c(-1)]) + ggtitle("k = 4")
+p5 <- fviz_cluster(k5, geom = "point",  data = data[c(-1)]) + ggtitle("k = 5")
+p6 <- fviz_cluster(k6, geom = "point",  data = data[c(-1)]) + ggtitle("k = 6")
+p7 <- fviz_cluster(k7, geom = "point",  data = data[c(-1)]) + ggtitle("k = 7")
+
+grid.arrange(p2, p3, p4, p5, p6, p7, nrow = 3)
+```
+
+# Hierarchical Clustering
+Hierarchical clustering, also known as hierarchical cluster analysis, is an algorithm that groups similar objects into groups called clusters. The endpoint is a set of clusters, where each cluster is distinct from each other cluster, and the objects within each cluster are broadly similar to each other.
+```{r}
+hac_output <- hclust(dist(data[c(-1)], method = "euclidean"), method = "ward.D2")
+```
+
+#### Plot the hierarchical clustering
+```{r, fig.width=12, fig.height=7}
+plot.new()
+plot(hac_output,main="Dendogram using HAC algorithm",xlab = "Author", ylab = "Euclidean Distance", cex = 0.6, hang = -1)
+rect.hclust(hac_output, k=4)
+```
+ 
+ Even here, we can clearly see that the disputed articles have been clustered together with the articles authored by Madison.
