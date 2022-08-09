@@ -1,0 +1,202 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+# HW 5: Use Decision Tree to Solve a Mystery in History
+
+In this homework assignment, you are going to use the decision tree algorithm to solve the disputed essay problem. Last week you used clustering techniques to tackle this problem.
+
+Organize your report using the following template:
+
+### Section 1: Data preparation
+You will need to separate the original data set to training and testing data for classification experiments. Describe what examples in your training and what in your test data.
+
+### Section 2: Build and tune decision tree models
+First build a DT model using default setting, and then tune the parameters to see if better model can be generated. Compare these models using appropriate evaluation measures. Describe and compare the patterns learned in these models. 
+
+### Section 3: Prediction
+After building the classification model, apply it to the disputed papers to find out the authorship. Does the DT model reach the same conclusion as the clustering algorithms did?
+
+```{r}
+#Name: Hrishikesh Telang
+```
+
+## I am loading the required packages
+```{r}
+library(factoextra)
+library(stringr)
+library(rpart)
+library(caret)
+library(gridExtra)
+library(tidyr)
+```
+
+## Now I am loading the dataset
+```{r}
+df <- read.csv("HW4-data-fedPapers85.csv")
+```
+
+## I am viewing the dataset
+```{r}
+View(df)
+```
+
+## I am trying to check the structure of the dataframe
+```{r}
+str(df)
+```
+
+## I am trying to check the structure of the dataframe
+```{r}
+View(df)
+```
+
+## I remove all the useless columns
+```{r}
+df <- df[-c(2)]
+head(df, 5)
+```
+
+# Decision Tree Algorithm
+
+Decision Tree algorithm belongs to the family of supervised learning algorithms. Unlike other supervised learning algorithms, decision tree algorithm can be used for solving regression and classification problems too.
+
+The general motive of using Decision Tree is to create a training model which can use to predict class or value of target variables by learning decision rules inferred from prior data(training data).
+
+## I am splitting the dataset into training and testing sets.
+```{r}
+#Training Set
+training_set <- subset(df, author != "dispt")
+
+# drop the levels information in original df, it will create troubles in prediction
+training_set <- droplevels(training_set)
+
+#Training Set
+testing_set <- subset(df, author == "dispt")
+
+# drop the levels information in original df, it will create troubles in prediction
+testing_set <- droplevels(testing_set)
+```
+## I am using cross validation to select the best model
+Cross-validation is a statistical method used to estimate the skill of machine learning models.
+It is commonly used in applied machine learning to compare and select a model for a given predictive modeling problem because it is easy to understand, easy to implement, and results in skill estimates that generally have a lower bias than other methods.
+```{r}
+#install.packages("RWeka")
+#install.packages("rJava",type = "source")
+library('rJava')
+library('RWeka')
+grid <- expand.grid(.cp=c(0.01,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45))
+
+grid <- expand.grid(.M=c(2,3,4,5,6,7,8,9,10), 
+                    .C=c(0.01,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45))
+
+# fit the model
+optimal_model = train(author ~ ., 
+                  data=training_set, 
+                  method="J48",
+                  trControl = trainControl(method = "cv",number = 10),
+                  tuneGrid = grid)
+```
+
+## I am checking the performance on training data
+```{r}
+training_pred = predict(optimal_model, newdata = training_set)
+
+# get the confusion matrix between groundtruth and prediction for training data
+table(training_pred, training_set$author)
+
+table(training_pred)
+table(training_set$author)
+training_set$author <- as.factor(training_set$author)
+
+confusionMatrix(data = training_pred, reference = training_set$author)
+
+confusionMatrix(data = training_pred, reference = training_set$author, mode = "everything")
+```
+Thus, with 94.59% probability the disputed articles belong to Madison.
+
+## I am predicting the testing data
+```{r}
+# predicted labels for the testing data
+testing_pred = predict(optimal_model, newdata = testing_set)
+
+## create a new dataframe to store prediction results
+testing_result <- testing_set
+
+## create a new column for the predictions
+testing_result['prediction'] <- testing_pred
+
+head(testing_result, 5)
+```
+We can finally see in the dataset that most of the disputed articles belong to Madison
+
+# Dropping the rows of files authored by Jay and Hamilton+Madison:
+## As we are only concerned about the authorship of the disputed articles, of Hamilton and of Madison, we are not concerned about those 3 articles written by Hamilton and Madison and 5 written by Jay. Thus, we can go ahead and remove 'Jay' and 'HM' from the dataframe and store it in the dataframe 'alt_training_set'.
+
+```{r}
+#Alternative Training Set
+alt_training_set <- subset(df, author == "Hamilton" | author == "Madison")
+
+# drop the levels information in original df, it will create troubles in prediction
+alt_training_set <- droplevels(alt_training_set)
+```
+
+## I am using cross validation to select the best model
+```{r}
+grid <- expand.grid(.cp=c(0.01,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45))
+
+# fit the model for alternative training data
+alt_optimal_model = train(author ~ ., 
+                  data=alt_training_set, 
+                  method="rpart",
+                  trControl = trainControl(method = "cv",number = 10),
+                  tuneGrid = grid)
+```
+
+## I am checking the performance on training data
+```{r}
+# extract predicted labels
+alt_training_pred = predict(alt_optimal_model, newdata = alt_training_set)
+# extract the probability of class
+alt_training_prob = predict(alt_optimal_model, newdata = alt_training_set, type="prob")
+
+# get the confusion matrix between groundtruth and prediction for training data
+table(alt_training_pred, alt_training_set$author)
+alt_training_set$author <- as.factor(alt_training_set$author)
+confusionMatrix(data = alt_training_pred, reference = alt_training_set$author)
+
+confusionMatrix(data = alt_training_pred, reference = alt_training_set$author, mode = "everything")
+
+## compute AUC and plot ROC curve
+library(pROC)
+# plot ROC and get AUC
+roc <- roc(predictor=alt_training_prob$Hamilton,
+               response=alt_training_set$author,
+               levels=rev(levels(alt_training_set$author)))
+
+roc$auc
+#Area under the curve: 0.9902
+plot(roc,main="ROC")
+
+# output the important features in predicting each class
+varImp(alt_optimal_model)
+```
+Thus, with 98.48% probability the disputed articles belong to Madison.
+
+## I am predicting the alternative testing data
+```{r}
+# predicted labels for the testing data
+alt_testing_pred = predict(alt_optimal_model, newdata = testing_set)
+
+## create a new dataframe to store prediction results
+alt_testing_result <- testing_set
+
+## create a new column for the predictions
+alt_testing_result['prediction'] <- alt_testing_pred
+
+head(alt_testing_result, 5)
+```
+We can also finally see in the dataset that most of the disputed articles belong to Madison
+
+Conclusion: So we can hereby conclude that, the disputed articles were authored by Madison.

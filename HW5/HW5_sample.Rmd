@@ -1,0 +1,190 @@
+---
+title: "HW5_sample"
+author: "Yang"
+date: "3/17/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This document serves as an introduction to the decision tree (C4.5) method.
+
+## Load R Packages
+
+Install required R packages:
+
+```{r}
+install.packages('dplyr')
+install.packages('ggplot2')
+install.packages('rpart')
+install.packages('caret')
+install.packages('rpart.plot')
+install.packages('vip')
+install.packages('pdp')
+install.packages('party')
+install.packages('partykit')
+install.packages('AmesHousing')
+install.packages('FSelector')
+install.packages("e1071")
+```
+
+```{r}
+# basic Rweka packages
+library(party)       # A computational toolbox for recursive partitioning
+library(partykit)    # A toolkit with infrastructure for representing, summarizing, and visualizing tree-structured regression and classification models.
+
+# Helper packages
+library(dplyr)       # for data wrangling
+library(ggplot2)     # for awesome plotting
+
+# Modeling packages
+library(rpart)       # direct engine for decision tree application
+library(caret)       # meta engine for decision tree application
+library(AmesHousing) # dataset
+
+# Model interpretability packages
+library(rpart.plot)  # for plotting decision trees
+library(vip)         # for feature importance
+library(pdp)         # for feature effects
+```
+
+# Load the data
+
+```{r}
+setwd("C:/Users/Yang/R_Workspace/Week_4")
+
+paper_data <- read.csv("HW4-data-fedPapers85.csv")
+
+paper_data <- paper_data[,-c(2)]
+
+head(paper_data)
+
+paper_data$author = as.factor(paper_data$author)
+
+head(paper_data)
+```
+
+# Split into training and testing data
+
+```{r}
+training_set <- subset(paper_data, author != "dispt")
+
+# drop the levels information in original paper_data, it will create troubles in prediction
+training_set <- droplevels(training_set)
+
+testing_set <- subset(paper_data, author == "dispt")
+
+testing_set <- droplevels(testing_set)
+
+alt_training_set <- subset(training_set, author == "Hamilton" | author == "Madison")
+
+alt_training_set <- droplevels(alt_training_set)
+```
+
+# Use cross validation to select the best model
+
+```{r}
+grid <- expand.grid(.cp=c(0.01,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45))
+
+grid <- expand.grid(.M=c(2,3,4,5,6,7,8,9,10), 
+                    .C=c(0.01,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45))
+
+# fit the model
+optimal_model = train(author ~ ., 
+                  data=training_set, 
+                  method="J48",
+                  trControl = trainControl(method = "cv",number = 10),
+                  tuneGrid = grid)
+
+```
+
+## Check the performance on training data
+
+```{r}
+training_pred = predict(optimal_model, newdata = training_set)
+
+# get the confusion matrix between groundtruth and prediction for training data
+table(training_pred, training_set$author)
+
+confusionMatrix(data = training_pred, reference = training_set$author)
+
+confusionMatrix(data = training_pred, reference = training_set$author, mode = "everything")
+
+# output the important features in predicting each class
+varImp(optimal_model)
+```
+
+## predict the testing data
+```{r}
+# predicted labels for the testing data
+testing_pred = predict(optimal_model, newdata = testing_set)
+
+## create a new dataframe to store prediction results
+testing_result <- testing_set
+
+## create a new column for the predictions
+testing_result['prediction'] <- testing_pred
+
+```
+
+# How about we remove Jay and HM from the training data
+
+```{r}
+grid <- expand.grid(.cp=c(0.01,0.05,0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45))
+
+# fit the model for alternative training data
+alt_optimal_model = train(author ~ ., 
+                  data=alt_training_set, 
+                  method="rpart",
+                  trControl = trainControl(method = "cv",number = 10),
+                  tuneGrid = grid)
+
+```
+
+## check the performance
+
+```{r}
+# extract predicted labels
+alt_training_pred = predict(alt_optimal_model, newdata = alt_training_set)
+# extract the probability of class
+alt_training_prob = predict(alt_optimal_model, newdata = alt_training_set, type="prob")
+
+# get the confusion matrix between groundtruth and prediction for training data
+table(alt_training_pred, alt_training_set$author)
+
+confusionMatrix(data = alt_training_pred, reference = alt_training_set$author)
+
+confusionMatrix(data = alt_training_pred, reference = alt_training_set$author, mode = "everything")
+
+## compute AUC and plot ROC curve
+library(pROC)
+# plot ROC and get AUC
+roc <- roc(predictor=alt_training_prob$Hamilton,
+               response=alt_training_set$author,
+               levels=rev(levels(alt_training_set$author)))
+
+roc$auc
+#Area under the curve: 0.9902
+plot(roc,main="ROC")
+
+# output the important features in predicting each class
+varImp(alt_optimal_model)
+
+```
+
+## predict the testing data
+```{r}
+# predicted labels for the testing data
+alt_testing_pred = predict(alt_optimal_model, newdata = testing_set)
+
+## create a new dataframe to store prediction results
+alt_testing_result <- testing_set
+
+## create a new column for the predictions
+alt_testing_result['prediction'] <- alt_testing_pred
+
+```
